@@ -65,7 +65,7 @@ def run(args):
     if check_debug():
         result_folder_name = "debug/" + result_folder_name
         num_episode = 2
-        num_simulations = 40
+        num_simulations = 5
 
     # allocating hyper-parameters
     env_params = {

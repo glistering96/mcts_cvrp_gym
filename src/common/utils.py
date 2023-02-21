@@ -6,11 +6,75 @@ import sys
 import time
 from copy import deepcopy
 from dataclasses import fields
+from datetime import datetime
 
 import numpy as np
+import pytz
 from torch.utils.tensorboard.summary import hparams
 
 from src.common.dataclass import StepState
+
+
+def get_result_folder(desc, result_dir, date_prefix=True):
+    process_start_time = datetime.now(pytz.timezone("Asia/Seoul"))
+
+    if date_prefix is True:
+        _date_prefix = process_start_time.strftime("%Y%m%d_%H%M%S")
+        result_folder = f'{result_dir}/{_date_prefix}-{desc}'
+
+    else:
+        result_folder = f'{result_dir}/{desc}'
+
+    return result_folder
+
+
+def set_result_folder(folder):
+    global result_folder
+    result_folder = folder
+
+
+def create_logger(log_file=None, result_dir='./result', **kwargs):
+    # print(log_file)
+    if 'result_dir' in log_file:
+        result_dir = log_file['result_dir']
+
+    if 'filepath' not in log_file:
+        log_file['filepath'] = get_result_folder(log_file['desc'], result_dir=result_dir,
+                                                 date_prefix=log_file['date_prefix'])
+
+    if 'desc' in log_file:
+        log_file['filepath'] = log_file['filepath'].format(desc='_' + log_file['desc'])
+    else:
+        log_file['filepath'] = log_file['filepath'].format(desc='')
+
+    if 'filename' in log_file:
+        filename = log_file['filepath'] + '/' + log_file['filename']
+    else:
+        filename = log_file['filepath'] + '/' + 'log.txt'
+
+    if not os.path.exists(log_file['filepath']):
+        os.makedirs(log_file['filepath'])
+
+    file_mode = 'a' if os.path.isfile(filename) else 'w'
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level=logging.INFO)
+    formatter = logging.Formatter("[%(asctime)s] %(filename)s(%(lineno)d) : %(message)s", "%Y-%m-%d %H:%M:%S")
+
+    for hdlr in root_logger.handlers[:]:
+        root_logger.removeHandler(hdlr)
+
+    # write to file
+    fileout = logging.FileHandler(filename, mode=file_mode)
+    fileout.setLevel(logging.INFO)
+    fileout.setFormatter(formatter)
+    root_logger.addHandler(fileout)
+
+    # write to console
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    console.setFormatter(formatter)
+    root_logger.addHandler(console)
 
 
 def deepcopy_state(state):
@@ -104,51 +168,6 @@ class TimeEstimator:
 
         self.logger.info("Epoch {:3d}/{:3d}: Time Est.: Elapsed[{}], Remain[{}]".format(
             count, total, elapsed_time_str, remain_time_str))
-
-
-def create_logger(log_file=None, result_dir='./result'):
-    # print(log_file)
-    desc = log_file['desc']
-
-    if 'result_dir' in log_file:
-        result_dir = log_file['result_dir']
-
-    if 'filepath' not in log_file:
-        log_file['filepath'] = f'{result_dir}/{desc}'
-
-    if 'desc' in log_file:
-        log_file['filepath'] = log_file['filepath'].format(desc='_' + desc)
-    else:
-        log_file['filepath'] = log_file['filepath'].format(desc='')
-
-    if 'filename' in log_file:
-        filename = log_file['filepath'] + '/' + log_file['filename']
-    else:
-        filename = log_file['filepath'] + '/' + 'log.txt'
-
-    if not os.path.exists(log_file['filepath']):
-        os.makedirs(log_file['filepath'])
-
-    file_mode = 'a' if os.path.isfile(filename) else 'w'
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level=logging.INFO)
-    formatter = logging.Formatter("[%(asctime)s] : %(message)s", "%Y-%m-%d %H:%M:%S")
-
-    for hdlr in root_logger.handlers[:]:
-        root_logger.removeHandler(hdlr)
-
-    # write to file
-    fileout = logging.FileHandler(filename, mode=file_mode)
-    fileout.setLevel(logging.INFO)
-    fileout.setFormatter(formatter)
-    root_logger.addHandler(fileout)
-
-    # write to console
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
-    root_logger.addHandler(console)
 
 
 def copy_all_src(dst_root):

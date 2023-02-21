@@ -310,5 +310,4 @@ class CVRPEnv(gym.Env):
             )
 
     def close(self):
-        self.screen.quit()
         pygame.quit()

@@ -1,23 +1,20 @@
-from collections import deque
-from copy import copy
-from pathlib import Path
 import random
+from collections import deque
+from copy import copy, deepcopy
+from pathlib import Path
 
 import torch
+from torch.multiprocessing import Pool
+import torch.nn.functional as F
 from gymnasium.wrappers import RecordVideo
+from stable_baselines3.common.env_util import make_vec_env
 from torch.optim import Adam as Optimizer
 from torch.utils.tensorboard import SummaryWriter
 
-from src.common.scaler import min_max_norm
 from src.common.utils import add_hparams, check_debug, explained_variance
-import torch.multiprocessing as mp
-import os
-import torch.nn.functional as F
-
 from src.env.cvrp_gym import CVRPEnv
 from src.models.common_modules import get_batch_tensor
 from src.rollout import RolloutBase
-
 
 tb = None
 hparam_writer = None
@@ -59,29 +56,19 @@ class TrainerModule(RolloutBase):
 
         self.debug_epoch = 0
 
-    def _load_model(self, model_load):
-        checkpoint_fullname = '{path}/checkpoint-{epoch}.pt'.format(**model_load)
-        checkpoint = torch.load(checkpoint_fullname, map_location=self.device)
-        self.start_epoch = checkpoint['epoch'] + 1
-
-        self.best_score = checkpoint['best_score']
-
-        loaded_state_dict = checkpoint['model_state_dict']
-        self.best_model.load_state_dict(loaded_state_dict)
-        self.model.load_state_dict(loaded_state_dict)
-
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-        self.logger.info(
-            f"Successfully loaded pre-trained policy_net {model_load['path']} with epoch: {model_load['epoch']}")
-
     def _record_video(self, epoch):
         mode = "rgb_array"
-        video_dir = self.model_params['model_load']['path'] + f'/videos/'
+        video_dir = self.run_params['model_load']['path'] + f'/videos/'
         data_path = self.run_params['data_path']
 
-        env = CVRPEnv(render_mode=mode, training=False, seed=5, data_path=data_path, **self.env_params)
+        env_params = deepcopy(self.env_params)
+        env_params['render_mode'] = mode
+        env_params['training'] = False
+        env_params['seed'] = 5
+        env_params['data_path'] = data_path
 
+        env = CVRPEnv(render_mode=mode, training=False, seed=5, data_path=data_path, **self.env_params)
+        # env = make_vec_env(CVRPEnv, n_envs=5, env_kwargs=env_params)
         # env = Monitor(env, video_dir, force=True)
         env = RecordVideo(env, video_dir, name_prefix=str(epoch))
 
@@ -89,10 +76,11 @@ class TrainerModule(RolloutBase):
         obs = env.reset()
         done = False
 
-        while not done:
-            # env.render()
-            action, _ = self.model.predict(obs)
-            obs, reward, done, truncated, info = env.step(int(action))
+        with torch.no_grad():
+            while not done:
+                # env.render()
+                action, _ = self.model.predict(obs)
+                obs, reward, done, truncated, info = env.step(int(action))
 
         # close the environment and the video recorder
         env.close()
@@ -119,13 +107,26 @@ class TrainerModule(RolloutBase):
             ############################
             all_done = (epoch == total_epochs)
             to_compare_score = train_score
+            updated = True
+
+            # if epoch < 200:
+            #     with torch.no_grad():
+            #         self.best_model.load_state_dict(self.model.state_dict())
+            #     self.logger.info("Best model parameter updated.")
+            #     updated = True
 
             if to_compare_score < self.best_score:
                 # normal logging interval
                 self.logger.info("Saving the best policy_net")
                 self.best_score = to_compare_score
                 self._save_checkpoints(epoch, is_best=True)
-                self._record_video(f"best-{epoch}")
+
+                # if not updated:
+                #     with torch.no_grad():
+                #         self.best_model.load_state_dict(self.model.state_dict())
+                #
+                # self.logger.info("Best model parameter updated.")
+
                 self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
 
@@ -142,9 +143,6 @@ class TrainerModule(RolloutBase):
                 self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
 
-            if epoch < 200:
-                self.best_model.load_state_dict(self.model.state_dict())
-                self.logger.info("Best model parameter updated.")
 
             # self._save_checkpoints("last", is_best=False)
             tb.add_scalar('score/train_score', train_score, epoch)
@@ -167,9 +165,6 @@ class TrainerModule(RolloutBase):
         # except:
         #     self.logger.info("Training stopped early")
         #     self._save_checkpoints("last", is_best=False)
-
-    def work(self, epoch):
-        return self._rollout_episode(epoch)
 
     def _set_lr(self, epoch):
         if 500 < epoch <= 1000:
@@ -201,32 +196,35 @@ class TrainerModule(RolloutBase):
             iterationTrainExamples = []
 
             if check_debug():
-                # num_works = min(2, remaining)
-                #
-                # pool = mp.Pool(processes=num_works)
-                # result = pool.map_async(self.work, [epoch for _ in range(num_works)]).get()
-                #
-                # pool.close()
-                # pool.join()
-                #
-                # for r in result:
-                #     iterationTrainExamples += r
-                iterationTrainExamples = self.work(epoch)
-                num_works = 1
+                num_works = min(2, remaining)
 
-            else:
-                num_cpus = self.run_params['num_proc']
-
-                num_works = min(num_cpus, remaining)
-
-                pool = mp.Pool(processes=num_works)
-                result = pool.map_async(self.work, [0 for _ in range(num_works)]).get()
+                pool = Pool(processes=num_works)
+                result = pool.map(self._rollout_episode, [epoch for _ in range(num_works)])
 
                 pool.close()
                 pool.join()
 
                 for r in result:
                     iterationTrainExamples += r
+                # iterationTrainExamples = self.work(epoch)
+                # num_works = 1
+
+            else:
+                # num_cpus = self.run_params['num_proc']
+                #
+                # num_works = min(num_cpus, remaining)
+                #
+                # pool = mp.Pool(processes=num_works)
+                # result = pool.map_async(self.work, [epoch for _ in range(num_works)])
+                #
+                # pool.close()
+                # pool.join()
+                #
+                # for r in result.get():
+                #     iterationTrainExamples += r
+
+                iterationTrainExamples = self.work(epoch)
+                num_works = 1
 
             remaining = remaining - num_works
             done += num_works
@@ -239,16 +237,15 @@ class TrainerModule(RolloutBase):
         self.logger.info(
             f"Simulating episodes done: {done}/{num_episodes}. Number of data is {len(self.trainExamplesHistory)}")
 
-        trainExamples = copy(self.trainExamplesHistory)
-
-        reward, total_loss, pi_loss, v_loss, explained_var = self._train_model(trainExamples, epoch)
+        reward, total_loss, pi_loss, v_loss, explained_var = self._train_model(self.trainExamplesHistory, epoch)
+        # reward, total_loss, pi_loss, v_loss, explained_var = 0,0,0,0,0
 
         return reward, total_loss, pi_loss, v_loss, explained_var
 
     def _train_model(self, examples, epoch):
         # trainExamples: [(obs, action_prob_dist, reward)]
         self.model.train()
-
+        print('entered training method')
         batch_size = min(len(examples), self.run_params['mini_batch_size'])
         train_epochs = self.run_params['train_epochs']
 
@@ -272,11 +269,13 @@ class TrainerModule(RolloutBase):
                 B = min(batch_size, remaining)
                 selected_batch_idx = batch_idx[batch_from:batch_from + B]
                 obs, policy, reward = list(zip(*[examples[i] for i in selected_batch_idx]))
+
                 obs = get_batch_tensor(obs)
-                target_probs = torch.tensor(policy, dtype=torch.float32, device=self.device).squeeze(1)
+
+                target_probs = torch.tensor(policy, dtype=torch.float32, device=self.device).squeeze(1).detach()
                 # (B, num_vehicles)
 
-                target_reward = torch.tensor(reward, dtype=torch.float32, device=self.device).view(B, -1)
+                target_reward = torch.tensor(reward, dtype=torch.float32, device=self.device).view(B, -1).detach()
                 # (B, )
 
                 # compute output
@@ -312,7 +311,9 @@ class TrainerModule(RolloutBase):
 
         explained_var = explained_variance(exp_var_values, exp_var_rewards)
 
-        return rewards, t_losses, pi_losses, v_losses, explained_var
+        del loss
+
+        return -rewards, t_losses, pi_losses, v_losses, explained_var
 
     def l2(self):
         l2_reg = torch.tensor(0., device=self.device)

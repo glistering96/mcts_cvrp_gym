@@ -6,7 +6,7 @@ import torch
 from stable_baselines3.common.vec_env import VecNormalize
 
 from src.common.dataclass import rollout_result
-from src.common.utils import TimeEstimator, deepcopy_state
+from src.common.utils import TimeEstimator, deepcopy_state, get_result_folder
 from src.env.cvrp_gym import CVRPEnv as Env
 from src.models.mha.models import SharedMHA, SeparateMHA
 from src.models.mha_mlp.models import SharedMHAMLP, SeparateMHAMLP
@@ -29,7 +29,13 @@ class RolloutBase:
 
         # cuda
         USE_CUDA = self.run_params['use_cuda']
+
         self.logger = getLogger(name='trainer')
+        self.result_folder = get_result_folder(logger_params['log_file']['desc'],
+                                               date_prefix=logger_params['log_file']['date_prefix'],
+                                               result_dir=logger_params['log_file']['result_dir']
+                                               )
+        Path(self.result_folder).mkdir(parents=True, exist_ok=True)
 
         if USE_CUDA:
             cuda_device_num = self.run_params['cuda_device_num']
@@ -52,6 +58,10 @@ class RolloutBase:
 
         self.model = self._get_model()
         self.best_model = self._get_model()
+        self.best_model.eval()
+
+        self.model.share_memory()
+        self.best_model.share_memory()
 
         # etc.
         self.epochs = 1
@@ -83,7 +93,24 @@ class RolloutBase:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict()
         }
+
         torch.save(checkpoint_dict, '{}/checkpoint-{}.pt'.format(self.result_folder, file_name))
+
+    def _load_model(self, model_load):
+        checkpoint_fullname = '{path}/checkpoint-{epoch}.pt'.format(**model_load)
+        checkpoint = torch.load(checkpoint_fullname, map_location=self.device)
+        self.start_epoch = checkpoint['epoch'] + 1
+
+        self.best_score = checkpoint['best_score']
+
+        loaded_state_dict = checkpoint['model_state_dict']
+        self.best_model.load_state_dict(loaded_state_dict)
+        self.model.load_state_dict(loaded_state_dict)
+
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        self.logger.info(
+            f"Successfully loaded pre-trained policy_net {model_load['path']} with epoch: {model_load['epoch']}")
 
     def _log_info(self, epoch, train_score, total, p_loss, val_loss, elapsed_time_str,
                   remain_time_str):
@@ -116,20 +143,23 @@ class RolloutBase:
         obs = self.env.reset()
         buffer = []
         done = False
+        print("rollout start")
 
-        if self.best_model.training:
-            temp = self._get_temp(epoch)
-
-        else:
-            temp = 0    # temp = 0 means exploitation. No stochastic sampling
+        # if self.best_model.training:
+        #     temp = self._get_temp(epoch)
+        #
+        # else:
+        #     temp = 0    # temp = 0 means exploitation. No stochastic sampling
 
         # episode rollout
         # gather probability of the action and value estimates for the state
         debug = 0
+        self.best_model.eval()
 
         with torch.no_grad():
             while not done:
                 mcts = MCTS(self.env, self.best_model, self.mcts_params)
+                temp = self._get_temp(debug)
                 action_probs = mcts.get_action_prob(obs, temp=temp)
                 action = np.random.choice(len(action_probs), p=action_probs)
 

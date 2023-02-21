@@ -1,3 +1,5 @@
+from torch.distributions import Categorical
+
 from src.models.mha.modules import *
 from src.models.common_modules import get_encoding, _to_tensor
 
@@ -12,7 +14,18 @@ class SharedMHA(nn.Module):
         self.policy_net = Policy(**model_params)
         self.value_net = Value(**model_params)
         self.encoder = Encoder(**model_params)
+        self.encoder.share_memory()
         self.latent_dim_pi = model_params['action_size']
+
+        self.debug_layer1 = nn.Sequential(
+            nn.Linear(model_params['embedding_dim'], 1)
+        )
+        self.debug_layer2 = nn.Sequential(
+            nn.Linear(model_params['embedding_dim'], 1)
+        )
+        self.debug_layer3 = nn.Sequential(
+            nn.Linear(21, 1)
+        )
 
     def _get_obs(self, observations):
         observations = _to_tensor(observations, self.device)
@@ -53,11 +66,16 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        val = self.value_net(cur_node, load, mask, xy, demands, T, encoding)
+        val = self.value_net(cur_node, load, mask, xy, demands, T, encoding.clone())
 
-        probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding)
-        probs = probs.reshape(-1, probs.size(-1))
-        val = val.reshape(-1, 1)
+        # probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding.clone())
+        #
+        # probs = probs.reshape(-1, probs.size(-1))
+        # val = val.reshape(-1, 1)
+
+        probs = F.softmax(self.debug_layer1(encoding).squeeze(-1), -1)
+        # val = self.debug_layer2(encoding).squeeze(-1)
+        # val = self.debug_layer3(val)
 
         return probs, val
 
@@ -91,6 +109,17 @@ class SharedMHA(nn.Module):
         val = val.reshape(-1, 1)
         return val
 
+    def predict(self, obs, deterministic=False):
+        probs = self.forward_actor(obs)
+
+        if deterministic:
+            action = probs.argmax(-1).item()
+
+        else:
+            action = Categorical(probs=probs).sample().item()
+
+        return action, None
+
 
 class SeparateMHA(nn.Module):
     def __init__(self, **model_params):
@@ -105,6 +134,8 @@ class SeparateMHA(nn.Module):
         self.latent_dim_pi = model_params['action_size']
 
     def _get_obs(self, observations):
+        observations = _to_tensor(observations, self.device)
+
         xy, demands = observations['xy'], observations['demands']
         # (N, 2), (N, 1)
 
@@ -176,6 +207,17 @@ class SeparateMHA(nn.Module):
 
         val = val.reshape(-1, 1)
         return val
+
+    def predict(self, obs, deterministic=False):
+        probs = self.forward_actor(obs)
+
+        if deterministic:
+            action = probs.argmax(-1).item()
+
+        else:
+            action = Categorical(probs=probs).sample().item()
+
+        return action, None
 
 
 class Encoder(nn.Module):
