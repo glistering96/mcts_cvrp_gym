@@ -29,6 +29,7 @@ class RolloutBase:
 
         # cuda
         USE_CUDA = self.run_params['use_cuda']
+        self.logger = getLogger(name='trainer')
 
         if USE_CUDA:
             cuda_device_num = self.run_params['cuda_device_num']
@@ -113,9 +114,6 @@ class RolloutBase:
 
     def _rollout_episode(self, epoch):
         obs = self.env.reset()
-
-        mcts = MCTS(self.env, self.best_model, self.mcts_params)
-
         buffer = []
         done = False
 
@@ -127,8 +125,11 @@ class RolloutBase:
 
         # episode rollout
         # gather probability of the action and value estimates for the state
+        debug = 0
+
         with torch.no_grad():
             while not done:
+                mcts = MCTS(self.env, self.best_model, self.mcts_params)
                 action_probs = mcts.get_action_prob(obs, temp=temp)
                 action = np.random.choice(len(action_probs), p=action_probs)
 
@@ -138,6 +139,8 @@ class RolloutBase:
 
                 obs = next_state
 
+                debug += 1
+
                 if done:
-                    result = [(x[0], x[1].tolist(), float(reward)) for x in buffer]
+                    result = [(x[0], x[1], float(reward)) for x in buffer]
                     return result

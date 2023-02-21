@@ -49,11 +49,11 @@ class CVRPEnv(gym.Env):
         self._load = None
         self._available = None
 
-        self.t = 0
+        self._t = 0
 
     def _get_obs(self):
         return {"xy": self._xy, "demands": self._demand, "pos": self._pos, "load": self._load,
-                "available": self._available, "t": self.t}
+                "available": self._available, "_t": self._t}
 
     def _make_problems(self, num_rollouts, num_depots, num_nodes):
         xy = make_cord(num_rollouts, num_depots, num_nodes)
@@ -176,7 +176,50 @@ class CVRPEnv(gym.Env):
 
         if not on_depot:
             self._visited[0] = False
+        #
+        # # get a copy of avail
+        # avail = ~self._visited.copy()
+        #
+        # # mark unavail for nodes that need more demands
+        # unreachable = self._load < self._demand
+        # avail[unreachable] = False
+        #
+        # done = self._is_done()
+        #
+        # # depot is unavailable if finished
+        # if done:
+        #     avail[0] = True
 
+        # assign avail to field
+        self._available, done = self.get_avail_mask()
+
+        reward = self.get_reward()
+
+        info = {}
+
+        self._t += 1
+
+        obs = self._get_obs()
+
+        if self.training:
+            return obs, reward, done, info
+
+        else:
+            return obs, reward, done, False, info
+
+    def get_reward(self):
+        if self._is_done() or self.step_reward:
+            visitng_idx = np.array(self._visiting_seq, dtype=int)[None, :]
+            dist = cal_distance(self._xy[None, :], visitng_idx)
+            return -float(dist)
+
+        else:
+            return 0
+
+    def _is_done(self):
+        return bool((self._visited[:] == True).all())
+
+    def get_avail_mask(self):
         # get a copy of avail
         avail = ~self._visited.copy()
 
@@ -190,34 +233,7 @@ class CVRPEnv(gym.Env):
         if done:
             avail[0] = True
 
-        # assign avail to field
-        self._available = avail
-
-        reward = self._get_reward()
-
-        info = {}
-
-        self.t += 1
-
-        obs = self._get_obs()
-
-        if self.training:
-            return obs, reward, done, info
-
-        else:
-            return obs, reward, done, False, info
-
-    def _get_reward(self):
-        if self._is_done() or self.step_reward:
-            visitng_idx = np.array(self._visiting_seq, dtype=int)[None, :]
-            dist = cal_distance(self._xy[None, :], visitng_idx)
-            return -float(dist)
-
-        else:
-            return 0
-
-    def _is_done(self):
-        return bool((self._visited[:] == True).all())
+        return avail, done
 
     def render(self):
         if self.render_mode is None:
@@ -274,7 +290,7 @@ class CVRPEnv(gym.Env):
 
         # Current distance cal
         self.step_reward = True
-        reward = -self._get_reward()
+        reward = -self.get_reward()
         self.step_reward = False
 
         # current dist show

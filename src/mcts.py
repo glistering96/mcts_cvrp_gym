@@ -16,6 +16,7 @@ class MCTS():
     """
 
     def __init__(self, env, model, mcts_params):
+
         self.env = deepcopy(env)
         self.model = model
         self.mcts_params = mcts_params
@@ -23,6 +24,13 @@ class MCTS():
         self.all_q_vals = []
         self.cpuct = mcts_params['cpuct']
         self.normalize_q_value = mcts_params['normalize_value']
+
+        self._initial_visitng_seq = deepcopy(self.env._visiting_seq)
+        self._initial_visited = deepcopy(self.env._visited)
+        self._initial_load = deepcopy(self.env._load)
+        self._initial_pos = deepcopy(self.env._pos)
+        self._initial_available = deepcopy(self.env._available)
+        self._initial_t = deepcopy(self.env._t)
 
         self.Q = {}  # stores Q values for s,a (as defined in the paper)
         self.W = {}  # sum of values
@@ -35,7 +43,7 @@ class MCTS():
         self.factor = (1, 0)
 
     def _cal_probs(self, target_state, temp):
-        s = target_state['t']
+        s = target_state['_t']
         counts = [self.N[(s, a)] if (s, a) in self.N else 0 for a in range(self.action_space)]
 
         if temp == 0:
@@ -66,7 +74,8 @@ class MCTS():
         # select the action
         # argmin (Q-U), since the reward concept becomes the loss in this MCTS
         # originally, argmax (Q+U) is true but to fit into minimization, argmin (-Q+U) is selected
-        s = state['t']
+        s = state['_t']
+        avail_mask, _ = self.env.get_avail_mask()
         diff, min_q_val = self._cal_factor()
 
         best_score = float('-inf')
@@ -74,9 +83,9 @@ class MCTS():
 
         # pick the action with the lowest upper confidence bound
         for a in range(self.action_space):
-            p = self.P[(s,a)]
+            # mask unavailable or non-promising actions
 
-            if p == 0:
+            if not avail_mask[a]:
                 continue
 
             ucb = self.cpuct * self.P[(s, a)] * math.sqrt(self.Ns[s]) / (1 + self.N[(s, a)])
@@ -96,7 +105,7 @@ class MCTS():
         return a
 
     def _expand(self, state):
-        s = state['t']
+        s = state['_t']
 
         prob_dist, v = self.model(state)
         probs = prob_dist.view(-1,).cpu().numpy()
@@ -108,6 +117,8 @@ class MCTS():
             self.W[(s, a)] = 0
             self.Q[(s, a)] = 0
             self.N[(s, a)] = 0
+
+        self.env._visiting_seq = []
 
         return v
 
@@ -140,9 +151,17 @@ class MCTS():
 
             self.Q[(s, a)] = Q_val
 
+    def _reset_env_field(self):
+        self.env._visiting_seq = deepcopy(self._initial_visitng_seq)    # type is list
+        self.env._visited = self._initial_visited.copy()
+        self.env._load = self._initial_load.copy()
+        self.env._available = self._initial_available.copy()
+        self.env._t = deepcopy(self._initial_t)
+
     def _run_simulation(self, root_state):
-        state = root_state
-        state_num = state['t']
+        obs = root_state
+        self._reset_env_field()
+        state_num = obs['_t']
 
         path = []
         done = False
@@ -153,23 +172,23 @@ class MCTS():
 
         # select child node and action
         while state_num in self.Ns:
-            debug_state = deepcopy(state)
+            debug_state = deepcopy(obs)
 
-            a = self._select(state)
+            a = self._select(obs)
             path.append((state_num, a))
 
-            state, value, done, _ = self.env.step(a)
-            state_num = state['t']
+            obs, value, done, _ = self.env.step(a)
+            state_num = obs['_t']
 
             if len(path) > 30:
                 break
 
         if not done:
             # leaf node reached
-            v = self._expand(state)
+            v = self._expand(obs)
 
         else:
             # terminal node reached
-            v = self.env.get_reward(state)
+            v = self.env.get_reward()
 
         self._back_propagate(path, v)

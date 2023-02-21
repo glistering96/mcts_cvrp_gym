@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 from src.common.scaler import *
 
 
@@ -23,10 +26,13 @@ def get_encoding(encoded_nodes, node_index_to_pick, T=1):
 
 
 def _to_tensor(obs, device):
+    if isinstance(list(obs.values())[0], torch.Tensor):
+        return obs
+
     tensor_obs = {k: None for k in obs.keys()}
 
     for k, v in obs.items():
-        if k != 't':
+        if k != '_t':
             if isinstance(v, np.ndarray):
                 tensor = torch.from_numpy(v).to(device)
                 tensor_obs[k] = tensor.unsqueeze(0)
@@ -35,3 +41,23 @@ def _to_tensor(obs, device):
                 tensor_obs[k] = torch.tensor([v], dtype=torch.long, device=device)
 
     return tensor_obs
+
+
+def get_batch_tensor(obs: list):
+    if not obs:
+        return None
+
+    tensor_obs = {k: [] for k in obs[0].keys()}
+
+    for x in obs:
+        for k, v in x.items():
+            tensor_obs[k].append(v)
+
+    for k, v in tensor_obs.items():
+        cat = np.stack(v)
+        tensor_obs[k] = torch.tensor(cat)
+
+    return tensor_obs
+
+
+

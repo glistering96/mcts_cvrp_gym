@@ -15,6 +15,7 @@ import os
 import torch.nn.functional as F
 
 from src.env.cvrp_gym import CVRPEnv
+from src.models.common_modules import get_batch_tensor
 from src.rollout import RolloutBase
 
 
@@ -258,8 +259,8 @@ class TrainerModule(RolloutBase):
         num_observations = 0
 
         train_epochs = min([max(10, epoch), train_epochs])
-        all_rewards = []
-        all_val_preds = []
+        exp_var_rewards = []
+        exp_var_values = []
 
         for epoch in range(train_epochs):
             batch_from = 0
@@ -271,7 +272,7 @@ class TrainerModule(RolloutBase):
                 B = min(batch_size, remaining)
                 selected_batch_idx = batch_idx[batch_from:batch_from + B]
                 obs, policy, reward = list(zip(*[examples[i] for i in selected_batch_idx]))
-
+                obs = get_batch_tensor(obs)
                 target_probs = torch.tensor(policy, dtype=torch.float32, device=self.device).squeeze(1)
                 # (B, num_vehicles)
 
@@ -281,7 +282,7 @@ class TrainerModule(RolloutBase):
                 # compute output
                 out_pi, out_v = self.model(obs)
 
-                l_pi = F.cross_entropy(out_pi.probs, target_probs)
+                l_pi = F.cross_entropy(out_pi, target_probs)
                 l_v = F.mse_loss(out_v, target_reward)
                 loss = l_pi + l_v + 0.0001 * self.l2()
 
@@ -301,17 +302,15 @@ class TrainerModule(RolloutBase):
                 batch_from += B
                 num_observations += B
 
-                all_rewards += reward
-                all_val_preds += l_v.detach().cpu().view(-1,).tolist()
-
-
+                exp_var_rewards += reward
+                exp_var_values += out_v.detach().cpu().view(-1,).tolist()
 
         rewards /= num_observations
         t_losses /= num_observations
         pi_losses /= num_observations
         v_losses /= num_observations
 
-        explained_var = explained_variance(all_val_preds, reward)
+        explained_var = explained_variance(exp_var_values, exp_var_rewards)
 
         return rewards, t_losses, pi_losses, v_losses, explained_var
 
