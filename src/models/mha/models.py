@@ -17,16 +17,6 @@ class SharedMHA(nn.Module):
         self.encoder.share_memory()
         self.latent_dim_pi = model_params['action_size']
 
-        self.debug_layer1 = nn.Sequential(
-            nn.Linear(model_params['embedding_dim'], 1)
-        )
-        self.debug_layer2 = nn.Sequential(
-            nn.Linear(model_params['embedding_dim'], 1)
-        )
-        self.debug_layer3 = nn.Sequential(
-            nn.Linear(21, 1)
-        )
-
     def _get_obs(self, observations):
         observations = _to_tensor(observations, self.device)
 
@@ -66,15 +56,11 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        # val = self.value_net(cur_node, load, mask, T, encoding.clone())
-        # val = val.reshape(-1, 1)
+        val = self.value_net(cur_node, load, mask, T, encoding.clone())
+        val = val.reshape(-1, 1)
 
         probs = self.policy_net(cur_node, load, mask, T, encoding.clone())
         probs = probs.reshape(-1, probs.size(-1))
-
-        # probs = F.softmax(self.debug_layer1(encoding).squeeze(-1), -1)
-        val = self.debug_layer2(encoding).squeeze(-1)
-        val = self.debug_layer3(val)
 
         return probs, val
 
