@@ -139,7 +139,7 @@ class RolloutBase:
         # abstract method
         raise NotImplementedError
 
-    def _rollout_episode(self, epoch):
+    def _rollout_episode(self, env, agent, mcts_params, epoch):
         obs = self.env.reset()
         buffer = []
         done = False
@@ -174,3 +174,32 @@ class RolloutBase:
                 if done:
                     result = [(x[0], x[1], float(reward)) for x in buffer]
                     return result
+
+def rollout_episode(env, agent, mcts_params, temp):
+    obs = env.reset()
+    buffer = []
+    done = False
+    print("rollout start")
+
+    # episode rollout
+    # gather probability of the action and value estimates for the state
+    debug = 0
+    agent.eval()
+
+    with torch.no_grad():
+        while not done:
+            mcts = MCTS(env, agent, mcts_params)
+            action_probs = mcts.get_action_prob(obs, temp=temp)
+            action = np.random.choice(len(action_probs), p=action_probs)
+
+            buffer.append((obs, action_probs))
+
+            next_state, reward, done, _ = env.step(action)
+
+            obs = next_state
+
+            debug += 1
+
+            if done:
+                result = [(x[0], x[1], float(reward)) for x in buffer]
+                return result

@@ -5,16 +5,16 @@ from pathlib import Path
 
 import torch
 from torch.multiprocessing import Pool
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 from gymnasium.wrappers import RecordVideo
-from stable_baselines3.common.env_util import make_vec_env
 from torch.optim import Adam as Optimizer
 from torch.utils.tensorboard import SummaryWriter
 
 from src.common.utils import add_hparams, check_debug, explained_variance
 from src.env.cvrp_gym import CVRPEnv
 from src.models.common_modules import get_batch_tensor
-from src.rollout import RolloutBase
+from src.rollout import RolloutBase, rollout_episode
 
 tb = None
 hparam_writer = None
@@ -102,12 +102,14 @@ class TrainerModule(RolloutBase):
 
             elapsed_time_str, remain_time_str = self.time_estimator.get_est_string(epoch, total_epochs)
 
+            # for k, v in self.model.state_dict().items():
+            #     print(f"{k}: {v.requires_grad}")
+
             ############################
             # Logs & Checkpoint
             ############################
             all_done = (epoch == total_epochs)
             to_compare_score = train_score
-            updated = True
 
             # if epoch < 200:
             #     with torch.no_grad():
@@ -142,7 +144,6 @@ class TrainerModule(RolloutBase):
                 # logging interval
                 self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
-
 
             # self._save_checkpoints("last", is_best=False)
             tb.add_scalar('score/train_score', train_score, epoch)
@@ -199,7 +200,9 @@ class TrainerModule(RolloutBase):
                 num_works = min(2, remaining)
 
                 pool = Pool(processes=num_works)
-                result = pool.map(self._rollout_episode, [epoch for _ in range(num_works)])
+                temp = self._get_temp(epoch)
+                params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
+                result = pool.starmap(rollout_episode, params)
 
                 pool.close()
                 pool.join()
@@ -210,21 +213,21 @@ class TrainerModule(RolloutBase):
                 # num_works = 1
 
             else:
-                # num_cpus = self.run_params['num_proc']
-                #
-                # num_works = min(num_cpus, remaining)
-                #
-                # pool = mp.Pool(processes=num_works)
-                # result = pool.map_async(self.work, [epoch for _ in range(num_works)])
-                #
-                # pool.close()
-                # pool.join()
-                #
-                # for r in result.get():
-                #     iterationTrainExamples += r
+                num_cpus = self.run_params['num_proc']
 
-                iterationTrainExamples = self.work(epoch)
-                num_works = 1
+                num_works = min(num_cpus, remaining)
+
+                pool = mp.Pool(processes=num_works)
+                result = pool.map_async(self._rollout_episode, [epoch for _ in range(num_works)])
+
+                pool.close()
+                pool.join()
+
+                for r in result.get():
+                    iterationTrainExamples += r
+
+                # iterationTrainExamples = self.work(epoch)
+                # num_works = 1
 
             remaining = remaining - num_works
             done += num_works
@@ -258,6 +261,7 @@ class TrainerModule(RolloutBase):
         train_epochs = min([max(10, epoch), train_epochs])
         exp_var_rewards = []
         exp_var_values = []
+        train_epochs = 1
 
         for epoch in range(train_epochs):
             batch_from = 0
@@ -270,7 +274,7 @@ class TrainerModule(RolloutBase):
                 selected_batch_idx = batch_idx[batch_from:batch_from + B]
                 obs, policy, reward = list(zip(*[examples[i] for i in selected_batch_idx]))
 
-                obs = get_batch_tensor(obs)
+                obs_batch_tensor = get_batch_tensor(obs)
 
                 target_probs = torch.tensor(policy, dtype=torch.float32, device=self.device).squeeze(1).detach()
                 # (B, num_vehicles)
@@ -279,7 +283,7 @@ class TrainerModule(RolloutBase):
                 # (B, )
 
                 # compute output
-                out_pi, out_v = self.model(obs)
+                out_pi, out_v = self.model(obs_batch_tensor)
 
                 l_pi = F.cross_entropy(out_pi, target_probs)
                 l_v = F.mse_loss(out_v, target_reward)
@@ -311,7 +315,7 @@ class TrainerModule(RolloutBase):
 
         explained_var = explained_variance(exp_var_values, exp_var_rewards)
 
-        del loss
+        del loss, out_pi, out_v, l_v, l_pi
 
         return -rewards, t_losses, pi_losses, v_losses, explained_var
 

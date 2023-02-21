@@ -66,16 +66,15 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        val = self.value_net(cur_node, load, mask, T, encoding.clone())
-
-        # probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding.clone())
-        #
-        # probs = probs.reshape(-1, probs.size(-1))
+        # val = self.value_net(cur_node, load, mask, T, encoding.clone())
         # val = val.reshape(-1, 1)
 
-        probs = F.softmax(self.debug_layer1(encoding).squeeze(-1), -1)
-        # val = self.debug_layer2(encoding).squeeze(-1)
-        # val = self.debug_layer3(val)
+        probs = self.policy_net(cur_node, load, mask, T, encoding.clone())
+        probs = probs.reshape(-1, probs.size(-1))
+
+        # probs = F.softmax(self.debug_layer1(encoding).squeeze(-1), -1)
+        val = self.debug_layer2(encoding).squeeze(-1)
+        val = self.debug_layer3(val)
 
         return probs, val
 
@@ -170,9 +169,9 @@ class SeparateMHA(nn.Module):
         mask = torch.zeros_like(available).type(torch.float32)
         mask[available == False] = float('-inf')
 
-        val = self.value_net(cur_node, load, mask, xy, demands, T, self.encoder(xy, demands))
+        val = self.value_net(cur_node, load, mask, T, self.encoder(xy, demands))
 
-        probs = self.policy_net(cur_node, load, mask, xy, demands, T, self.encoder(xy, demands))
+        probs = self.policy_net(cur_node, load, mask, T, self.encoder(xy, demands))
         probs = probs.reshape(-1, probs.size(-1))
         val = val.reshape(-1, 1)
 
