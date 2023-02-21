@@ -66,7 +66,7 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        val = self.value_net(cur_node, load, mask, xy, demands, T, encoding.clone())
+        val = self.value_net(cur_node, load, mask, T, encoding.clone())
 
         # probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding.clone())
         #
@@ -248,10 +248,7 @@ class Policy(nn.Module):
         self.decoder_common = DecoderCommon(**model_params)
         self.embedding_dim = model_params['embedding_dim']
 
-    def forward(self, cur_node, load, mask, xy, demand, T, encoding=None):
-        if encoding is None:
-            encoding = self.encoder(xy, demand)
-
+    def forward(self, cur_node, load, mask, T, encoding):
         self.decoder_common.set_kv(encoding)
 
         last_node = get_encoding(encoding, cur_node.long(), T)
@@ -280,15 +277,11 @@ class Policy(nn.Module):
 class Value(nn.Module):
     def __init__(self, **model_params):
         super(Value, self).__init__()
-        self.encoder = Encoder(**model_params)
         self.decoder_common = DecoderCommon(**model_params)
         self.embedding_dim = model_params['embedding_dim']
         self.val = nn.Linear(self.embedding_dim, 1)
 
-    def forward(self, cur_node, load, mask, xy, demand, T, encoding=None):
-        if encoding is None:
-            encoding = self.encoder(xy, demand)
-
+    def forward(self, cur_node, load, mask, T, encoding):
         self.decoder_common.set_kv(encoding)
 
         last_node = get_encoding(encoding, cur_node.long(), T)
