@@ -110,12 +110,13 @@ class TrainerModule(RolloutBase):
             ############################
             all_done = (epoch == total_epochs)
             to_compare_score = train_score
+            updated = False
 
-            # if epoch < 200:
-            #     with torch.no_grad():
-            #         self.best_model.load_state_dict(self.model.state_dict())
-            #     self.logger.info("Best model parameter updated.")
-            #     updated = True
+            if epoch < 200:
+                with torch.no_grad():
+                    self.best_model.load_state_dict(self.model.state_dict())
+                self.logger.info("Best model parameter updated.")
+                updated = True
 
             if to_compare_score < self.best_score:
                 # normal logging interval
@@ -123,11 +124,11 @@ class TrainerModule(RolloutBase):
                 self.best_score = to_compare_score
                 self._save_checkpoints(epoch, is_best=True)
 
-                # if not updated:
-                #     with torch.no_grad():
-                #         self.best_model.load_state_dict(self.model.state_dict())
-                #
-                # self.logger.info("Best model parameter updated.")
+                if not updated:
+                    with torch.no_grad():
+                        self.best_model.load_state_dict(self.model.state_dict())
+
+                    self.logger.info("Best model parameter updated.")
 
                 self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
@@ -217,13 +218,15 @@ class TrainerModule(RolloutBase):
 
                 num_works = min(num_cpus, remaining)
 
-                pool = mp.Pool(processes=num_works)
-                result = pool.map_async(self._rollout_episode, [epoch for _ in range(num_works)])
+                pool = Pool(processes=num_works)
+                temp = self._get_temp(epoch)
+                params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
+                result = pool.starmap(rollout_episode, params)
 
                 pool.close()
                 pool.join()
 
-                for r in result.get():
+                for r in result:
                     iterationTrainExamples += r
 
                 # iterationTrainExamples = self.work(epoch)
@@ -248,7 +251,6 @@ class TrainerModule(RolloutBase):
     def _train_model(self, examples, epoch):
         # trainExamples: [(obs, action_prob_dist, reward)]
         self.model.train()
-        print('entered training method')
         batch_size = min(len(examples), self.run_params['mini_batch_size'])
         train_epochs = self.run_params['train_epochs']
 
@@ -261,7 +263,7 @@ class TrainerModule(RolloutBase):
         train_epochs = min([max(10, epoch), train_epochs])
         exp_var_rewards = []
         exp_var_values = []
-        train_epochs = 1
+        # train_epochs = 1
 
         for epoch in range(train_epochs):
             batch_from = 0

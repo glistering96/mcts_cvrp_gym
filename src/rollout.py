@@ -179,7 +179,6 @@ def rollout_episode(env, agent, mcts_params, temp):
     obs = env.reset()
     buffer = []
     done = False
-    print("rollout start")
 
     # episode rollout
     # gather probability of the action and value estimates for the state

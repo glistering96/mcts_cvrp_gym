@@ -36,11 +36,11 @@ def parse_args():
     parser.add_argument("--mini_batch_size", type=int, default=4096, help="mini-batch size")
     parser.add_argument("--train_epochs", type=int, default=30, help="train epochs")
     parser.add_argument("--epochs", type=int, default=5000, help="number of episodes to run")
-    parser.add_argument("--num_episode", type=int, default=50, help="number of episodes to run")
+    parser.add_argument("--num_episode", type=int, default=24, help="number of episodes to run")
     parser.add_argument("--model_load", type=int, default=-1, help="If value is greater than 0, it will load the model")
     parser.add_argument("--lr", type=float, default=0.01, help="Learning rate of ADAM optimizer")
     parser.add_argument("--gpu_id", type=int, default=0, help="Id of gpu to use")
-    parser.add_argument("--num_proc", type=int, default=5, help="number of episodes to run")
+    parser.add_argument("--num_proc", type=int, default=8, help="number of episodes to run")
 
     # etc.
     parser.add_argument("-s", "--seed", type=int, default=1, help="values smaller than 1 will not set any seeds")

@@ -74,7 +74,7 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding)
+        probs = self.policy_net(cur_node, load, mask, T, encoding)
         probs = probs.reshape(-1, probs.size(-1))
 
         return probs
@@ -89,7 +89,7 @@ class SharedMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        val = self.value_net(cur_node, load, mask, xy, demands, T, encoding)
+        val = self.value_net(cur_node, load, mask, T, encoding)
 
         val = val.reshape(-1, 1)
         return val
@@ -173,7 +173,7 @@ class SeparateMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        probs = self.policy_net(cur_node, load, mask, xy, demands, T, encoding)
+        probs = self.policy_net(cur_node, load, mask, T, encoding)
         probs = probs.reshape(-1, probs.size(-1))
 
         return probs
@@ -188,7 +188,7 @@ class SeparateMHA(nn.Module):
 
         encoding = self.encoder(xy, demands)
 
-        val = self.value_net(cur_node, load, mask, xy, demands, T, encoding)
+        val = self.value_net(cur_node, load, mask, T, encoding)
 
         val = val.reshape(-1, 1)
         return val
