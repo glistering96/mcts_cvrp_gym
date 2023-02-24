@@ -56,6 +56,9 @@ class TrainerModule(RolloutBase):
 
         self.debug_epoch = 0
 
+        self.min_reward = float('inf')
+        self.max_reward = float('-inf')
+
     def _record_video(self, epoch):
         mode = "rgb_array"
         video_dir = self.run_params['model_load']['path'] + f'/videos/'
@@ -164,10 +167,6 @@ class TrainerModule(RolloutBase):
                 tb.close()
                 self.logger.info(" *** Training Done *** ")
 
-        # except:
-        #     self.logger.info("Training stopped early")
-        #     self._save_checkpoints("last", is_best=False)
-
     def _set_lr(self, epoch):
         if 500 < epoch <= 1000:
             self.current_lr = self.current_lr * 0.5
@@ -191,55 +190,39 @@ class TrainerModule(RolloutBase):
 
         self._set_lr(epoch)
 
-        remaining = num_episodes
-        done = 0
+        iterationTrainExamples = []
 
-        while remaining > 0:
-            iterationTrainExamples = []
+        num_cpus = self.run_params['num_proc']
 
-            if check_debug():
-                num_works = min(2, remaining)
+        if check_debug():
+            num_works = 2
 
-                pool = Pool(processes=num_works)
-                temp = self._get_temp(epoch)
-                params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
-                result = pool.starmap(rollout_episode, params)
+        num_works = min(num_cpus, num_episodes)
 
-                pool.close()
-                pool.join()
+        pool = Pool(processes=num_works)
+        temp = self._get_temp(epoch)
+        params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
+        result = pool.starmap_async(rollout_episode, params)
 
-                for r in result:
-                    iterationTrainExamples += r
-                # iterationTrainExamples = self.work(epoch)
-                # num_works = 1
+        pool.close()
+        pool.join()
 
-            else:
-                num_cpus = self.run_params['num_proc']
+        for r in result.get():
+            data_chunk = r
+            reward = data_chunk[0][-1] # 0 th reward
 
-                num_works = min(num_cpus, remaining)
+            if reward < self.min_reward:
+                self.min_reward = reward
 
-                pool = Pool(processes=num_works)
-                temp = self._get_temp(epoch)
-                params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
-                result = pool.starmap(rollout_episode, params)
+            if reward > self.max_reward:
+                self.max_reward = reward
 
-                pool.close()
-                pool.join()
+            iterationTrainExamples += data_chunk
 
-                for r in result:
-                    iterationTrainExamples += r
+        done = num_works
 
-                # iterationTrainExamples = self.work(epoch)
-                # num_works = 1
+        self.trainExamplesHistory.extend(iterationTrainExamples)
 
-            remaining = remaining - num_works
-            done += num_works
-
-            self.trainExamplesHistory.extend(iterationTrainExamples)
-
-            print(f"\rSimulating episodes done: {done}/{num_episodes}", end="")
-
-        print("\r", end="")
         self.logger.info(
             f"Simulating episodes done: {done}/{num_episodes}. Number of data is {len(self.trainExamplesHistory)}")
 
@@ -283,6 +266,8 @@ class TrainerModule(RolloutBase):
 
                 target_reward = torch.tensor(reward, dtype=torch.float32, device=self.device).view(B, -1).detach()
                 # (B, )
+
+                target_reward = (target_reward - self.min_reward) / (self.max_reward - self.min_reward + 1e-8)
 
                 # compute output
                 out_pi, out_v = self.model(obs_batch_tensor)

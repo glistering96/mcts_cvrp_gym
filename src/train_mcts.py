@@ -55,6 +55,11 @@ def run(args):
     # etc
     data_path = args.data_path
 
+    # when debugging
+    if check_debug():
+        num_episode = 2
+        num_simulations = 5
+
     env_param_nm = f"N_{num_demand_nodes}"
     model_param_nm = f"nn-{nn}-{embedding_dim}-{encoder_layer_num}-{qkv_dim}-{head_num}-{C}"
     mcts_param_nm = f"ns_{num_simulations}-temp_th_{temp_threshold}-cpuct_{cpuct}-norm_val_{normalize_value}"
@@ -64,8 +69,6 @@ def run(args):
     # when debugging
     if check_debug():
         result_folder_name = "debug/" + result_folder_name
-        num_episode = 2
-        num_simulations = 5
 
     # allocating hyper-parameters
     env_params = {
@@ -75,7 +78,7 @@ def run(args):
 
     mcts_params = {
         'num_simulations': num_simulations,
-        'temp_threshold': temp_threshold,  # 40
+        'temp_threshold': temp_threshold,  #
         'noise_eta': noise_eta,  # 0.25
         'cpuct': cpuct,
         'action_space': action_space,
