@@ -46,7 +46,7 @@ class TrainerModule(RolloutBase):
         self.best_score = float('inf')
         self.best_loss = float('inf')
         self.current_lr = optimizer_params['lr']
-        self.trainExamplesHistory = deque([], maxlen=1000000)
+        self.trainExamplesHistory = deque([], maxlen=2000000)
 
         if Path('../data/mcts_train_data.pt').exists():
             self.trainExamplesHistory = torch.load('../data/mcts_train_data.pt')
@@ -113,7 +113,9 @@ class TrainerModule(RolloutBase):
             ############################
             all_done = (epoch == total_epochs)
             to_compare_score = train_score
+
             updated = False
+            logged = False
 
             if epoch < 200:
                 with torch.no_grad():
@@ -135,19 +137,22 @@ class TrainerModule(RolloutBase):
 
                 self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
+                logged = True
 
-            elif all_done or (epoch % model_save_interval) == 0:
+            if all_done or (epoch % model_save_interval) == 0:
                 # when the best score is collected
                 self.logger.info(f"Saving the trained policy_net. Current lr: {self.current_lr}")
                 self._save_checkpoints(epoch, is_best=False)
                 self._record_video(f"{epoch}")
-                self._log_info(epoch, train_score, total_loss, p_loss,
+
+                if not logged:
+                    self._log_info(epoch, train_score, total_loss, p_loss,
                                val_loss, elapsed_time_str, remain_time_str)
 
             elif epoch % log_interval == 0:
                 # logging interval
-                self._log_info(epoch, train_score, total_loss, p_loss,
-                               val_loss, elapsed_time_str, remain_time_str)
+                if not logged:
+                    self._log_info(epoch, train_score, total_loss, p_loss, val_loss, elapsed_time_str, remain_time_str)
 
             # self._save_checkpoints("last", is_best=False)
             tb.add_scalar('score/train_score', train_score, epoch)
@@ -195,13 +200,11 @@ class TrainerModule(RolloutBase):
         num_cpus = self.run_params['num_proc']
 
         if check_debug():
-            num_works = 2
+            num_cpus = 2
 
-        num_works = min(num_cpus, num_episodes)
-
-        pool = Pool(processes=num_works)
+        pool = Pool(processes=num_cpus)
         temp = self._get_temp(epoch)
-        params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_works)]
+        params = [(self.env, self.best_model, self.mcts_params, temp) for _ in range(num_episodes)]
         result = pool.starmap_async(rollout_episode, params)
 
         pool.close()
@@ -219,12 +222,10 @@ class TrainerModule(RolloutBase):
 
             iterationTrainExamples += data_chunk
 
-        done = num_works
-
         self.trainExamplesHistory.extend(iterationTrainExamples)
 
         self.logger.info(
-            f"Simulating episodes done: {done}/{num_episodes}. Number of data is {len(self.trainExamplesHistory)}")
+            f"Simulating episodes done on {num_episodes}. Number of data is {len(self.trainExamplesHistory)}")
 
         reward, total_loss, pi_loss, v_loss, explained_var = self._train_model(self.trainExamplesHistory, epoch)
         # reward, total_loss, pi_loss, v_loss, explained_var = 0,0,0,0,0
@@ -267,14 +268,14 @@ class TrainerModule(RolloutBase):
                 target_reward = torch.tensor(reward, dtype=torch.float32, device=self.device).view(B, -1).detach()
                 # (B, )
 
-                target_reward = (target_reward - self.min_reward) / (self.max_reward - self.min_reward + 1e-8)
+                # target_reward = (target_reward - self.min_reward) / (self.max_reward - self.min_reward + 1e-8)
 
                 # compute output
                 out_pi, out_v = self.model(obs_batch_tensor)
 
                 l_pi = F.cross_entropy(out_pi, target_probs)
-                l_v = F.mse_loss(out_v, target_reward)
-                loss = l_pi + l_v + 0.0001 * self.l2()
+                l_v = 0.5*F.mse_loss(out_v, target_reward)
+                loss = l_pi + l_v + 0.001 * self.l2()
 
                 # record loss
 

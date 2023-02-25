@@ -119,7 +119,7 @@ class CVRPEnv(gym.Env):
             self.node_font = pygame.font.Font(None, 20)
 
             # Create screen
-            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags=pygame.HIDDEN)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -176,19 +176,6 @@ class CVRPEnv(gym.Env):
 
         if not on_depot:
             self._visited[0] = False
-        #
-        # # get a copy of avail
-        # avail = ~self._visited.copy()
-        #
-        # # mark unavail for nodes that need more demands
-        # unreachable = self._load < self._demand
-        # avail[unreachable] = False
-        #
-        # done = self._is_done()
-        #
-        # # depot is unavailable if finished
-        # if done:
-        #     avail[0] = True
 
         # assign avail to field
         self._available, done = self.get_avail_mask()
