@@ -177,7 +177,7 @@ class MCTS():
 
         if not self.all_q_vals:
             _add_noise = True if self.training else False
-            v = self._expand(root_state, add_noise=True)
+            v = self._expand(root_state, add_noise=_add_noise)
 
         # select child node and action
         while state_num in self.Ns:
