@@ -116,7 +116,7 @@ class MCTS():
         if add_noise:
             noise = np.random.dirichlet([self.noise_eta for _ in range(self.action_space)])
             noised_probs = probs + noise
-            probs = noised_probs.exp() / (noised_probs.exp().sum() + 1e-8)
+            probs = np.exp(noised_probs) / (np.exp(noised_probs).sum() + 1e-8)
 
         self.Ns[s] = 1
 
