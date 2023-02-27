@@ -72,8 +72,7 @@ def search_params(num_proc):
     hyper_param_dict = {
         'num_simulations' : [15, 20, 25, 30],
         'temp_threshold' : [5, 10, 15],
-        'cpuct' : [0.5, 1, 1.1, 1.5, 2, 5, 10],
-        'reg_coef' : [0.0001, 0.00001,  0.00005],
+        'cpuct' : [1, 1.1, 1.5, 5, 10],
         'lr' : [0.00005, 0.00001]
     }
 
@@ -103,12 +102,12 @@ def search_params(num_proc):
 if __name__ == '__main__':
     r = {}
 
-    for cpuct in [0.8, 1, 1.1, 1.2, 1.5, 2, 4, 6, 8, 10]:
+    for cpuct in [1, 1.1, 1.2, 10, 50]:
         args = parse_args()
         args.nn = 'shared_mha'
         args.model_load = f'./data/for_mcts/N{args.num_nodes}_D{args.num_depots}_7.2342.pt'
         args.cpuct = cpuct
-        args.num_simulations = 100
+        args.num_simulations = 50
         r[cpuct] = run(args)
 
     print(dict(sorted(r.items(), key=lambda x: x[1])))

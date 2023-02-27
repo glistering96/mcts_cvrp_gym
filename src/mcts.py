@@ -192,8 +192,9 @@ class MCTS():
 
             state_num = obs['_t']
 
-            if len(path) > 30:
-                break
+            if self.training:
+                if len(path) > 30:
+                    break
 
         if not done:
             # leaf node reached
