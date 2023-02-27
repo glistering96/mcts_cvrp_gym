@@ -262,6 +262,7 @@ class Policy(nn.Module):
 class Value(nn.Module):
     def __init__(self, **model_params):
         super(Value, self).__init__()
+        self.encoder = Encoder(**model_params)
         self.decoder_common = DecoderCommon(**model_params)
         self.embedding_dim = model_params['embedding_dim']
         self.val = nn.Linear(self.embedding_dim, 1)

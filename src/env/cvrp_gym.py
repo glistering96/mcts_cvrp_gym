@@ -121,6 +121,15 @@ class CVRPEnv(gym.Env):
             # Create screen
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), flags=pygame.HIDDEN)
 
+    def get_reward(self):
+        if self._is_done() or self.step_reward:
+            visitng_idx = np.array(self._visiting_seq, dtype=int)[None, :]
+            dist = cal_distance(self._xy[None, :], visitng_idx)
+            return -float(dist)
+
+        else:
+            return 0
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -193,15 +202,6 @@ class CVRPEnv(gym.Env):
 
         else:
             return obs, reward, done, False, info
-
-    def get_reward(self):
-        if self._is_done() or self.step_reward:
-            visitng_idx = np.array(self._visiting_seq, dtype=int)[None, :]
-            dist = cal_distance(self._xy[None, :], visitng_idx)
-            return -float(dist)
-
-        else:
-            return 0
 
     def _is_done(self):
         return bool((self._visited[:] == True).all())
@@ -298,3 +298,6 @@ class CVRPEnv(gym.Env):
 
     def close(self):
         pygame.quit()
+
+    def set_test_mode(self):
+        self.training = False

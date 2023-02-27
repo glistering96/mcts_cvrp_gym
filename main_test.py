@@ -3,7 +3,7 @@ import json
 from argparse import ArgumentParser
 
 import torch.multiprocessing as mp
-from src.train_mcts import run
+from src.test_mcts import run
 
 
 def parse_args():
@@ -13,11 +13,11 @@ def parse_args():
     parser.add_argument("--num_nodes", type=int, default=20, help="Number of nodes in the test data generation")
     parser.add_argument("--num_depots", type=int, default=1, help="Number of depots in the test data generation")
     parser.add_argument("--num_env", type=int, default=1, help="Number of parallel rollout of episodes")
-    parser.add_argument("--step_reward", type=bool, default=True, help="whether to have step reward. If false, only the "
+    parser.add_argument("--step_reward", type=bool, default=False, help="whether to have step reward. If false, only the "
                                                                        "reward in the last transition will be returned")
 
     # mcts params
-    parser.add_argument("--num_simulations", type=int, default=25, help="Number of simulations")
+    parser.add_argument("--num_simulations", type=int, default=50, help="Number of simulations")
     parser.add_argument("--temp_threshold", type=int, default=5, help="Temperature threshold")
     parser.add_argument("--noise_eta", type=float, default=0.25, help="Noise eta param")
     parser.add_argument("--cpuct", type=float, default=1.1, help="cpuct param")
@@ -32,13 +32,13 @@ def parse_args():
     parser.add_argument("--C", type=int, default=10, help="C parameter that is applied to the tanh activation on the"
                                                           " last layer output of policy network")
 
-    # trainer params
-    parser.add_argument("--mini_batch_size", type=int, default=4096, help="mini-batch size")
+    # tester params
+    parser.add_argument("--mini_batch_size", type=int, default=2048, help="mini-batch size")
     parser.add_argument("--train_epochs", type=int, default=10, help="train epochs")
     parser.add_argument("--epochs", type=int, default=5000, help="number of episodes to run")
-    parser.add_argument("--num_episode", type=int, default=25, help="number of episodes to run")
-    parser.add_argument("--model_load", type=int, default=-1, help="If value is greater than 0, it will load the model")
-    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate of ADAM optimizer")
+    parser.add_argument("--num_episode", type=int, default=100, help="number of episodes to run")
+    parser.add_argument("--model_load", type=str, help="If value is greater than 0, it will load the model")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate of ADAM optimizer")
     parser.add_argument("--gpu_id", type=int, default=0, help="Id of gpu to use")
     parser.add_argument("--num_proc", type=int, default=5, help="number of episodes to run")
 
@@ -101,21 +101,15 @@ def search_params(num_proc):
 
 
 if __name__ == '__main__':
-    # from gym.envs.registration import register
-    #
-    # register(
-    #     id='custom_gyms/CVRP-v0',
-    #     entry_point='src.env.cvrp_gym:CVRPEnv',
-    #     max_episode_steps=1000,
-    # )
+    r = {}
 
-    # search_params(2, 'a2c')
+    for cpuct in [0.8, 1, 1.1, 1.2, 1.5, 2, 4, 6, 8, 10]:
+        args = parse_args()
+        args.nn = 'shared_mha'
+        args.model_load = f'./data/for_mcts/N{args.num_nodes}_D{args.num_depots}_7.2342.pt'
+        args.cpuct = cpuct
+        args.num_simulations = 100
+        r[cpuct] = run(args)
 
-    args = parse_args()
-    args.step_reward = False
-    args.nn = 'shared_mha'
-    run(args)
-
-    # render_test()
-    # record_video()
+    print(dict(sorted(r.items(), key=lambda x: x[1])))
 

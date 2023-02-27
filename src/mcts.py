@@ -15,7 +15,7 @@ class MCTS():
     This class handles the MCTS tree.
     """
 
-    def __init__(self, env, model, mcts_params):
+    def __init__(self, env, model, mcts_params, training=True):
 
         self.env = deepcopy(env)
         self.model = model
@@ -24,6 +24,7 @@ class MCTS():
         self.all_q_vals = []
         self.cpuct = mcts_params['cpuct']
         self.normalize_q_value = mcts_params['normalize_value']
+        self.noise_eta = mcts_params['noise_eta']
 
         self._initial_visitng_seq = deepcopy(self.env._visiting_seq)
         self._initial_visited = deepcopy(self.env._visited)
@@ -31,6 +32,8 @@ class MCTS():
         self._initial_pos = deepcopy(self.env._pos)
         self._initial_available = deepcopy(self.env._available)
         self._initial_t = deepcopy(self.env._t)
+
+        self.training = training
 
         self.Q = {}  # stores Q values for s,a (as defined in the paper)
         self.W = {}  # sum of values
@@ -104,11 +107,16 @@ class MCTS():
         a = best_act
         return a
 
-    def _expand(self, state):
+    def _expand(self, state, add_noise=False):
         s = state['_t']
 
         prob_dist, v = self.model(state)
         probs = prob_dist.view(-1,).cpu().numpy()
+
+        if add_noise:
+            noise = np.random.dirichlet([self.noise_eta for _ in range(self.action_space)])
+            noised_probs = probs + noise
+            probs = noised_probs.exp() / (noised_probs.exp().sum() + 1e-8)
 
         self.Ns[s] = 1
 
@@ -168,16 +176,20 @@ class MCTS():
         v = 0
 
         if not self.all_q_vals:
-            v = self._expand(root_state)
+            _add_noise = True if self.training else False
+            v = self._expand(root_state, add_noise=True)
 
         # select child node and action
         while state_num in self.Ns:
-            debug_state = deepcopy(obs)
-
             a = self._select(obs)
             path.append((state_num, a))
 
-            obs, value, done, _ = self.env.step(a)
+            if self.training:
+                obs, value, done, _ = self.env.step(a)
+
+            else:
+                obs, reward, done, _, _ = self.env.step(a)
+
             state_num = obs['_t']
 
             if len(path) > 30:

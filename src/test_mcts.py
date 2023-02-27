@@ -4,7 +4,7 @@ import torch
 
 
 from src.common.utils import create_logger, check_debug, copy_all_src
-from src.trainer import TrainerModule
+from src.tester import TesterModule
 
 
 def run(args):
@@ -37,27 +37,17 @@ def run(args):
     head_num = args.head_num
     C = args.C
 
-    # trainer params
-    mini_batch_size = args.mini_batch_size
-    epochs = args.epochs
+    # tester params
     num_episode = args.num_episode
-    train_epochs = args.train_epochs
     model_load = args.model_load
-    load_model = True if model_load > 0 or len(model_load) is not None else False
+    lr = args.lr  # from google's paper
     cuda_device_num = args.gpu_id
-    num_proc = args.num_proc
-
     # logging params
     result_dir = args.result_dir
     tb_log_dir = args.tb_log_dir
 
     # etc
     data_path = args.data_path
-
-    # when debugging
-    if check_debug():
-        num_episode = 2
-        num_simulations = 5
 
     env_param_nm = f"N_{num_demand_nodes}"
     model_param_nm = f"nn-{nn}-{embedding_dim}-{encoder_layer_num}-{qkv_dim}-{head_num}-{C}"
@@ -114,23 +104,9 @@ def run(args):
     train_params = {
         'use_cuda': True,
         'cuda_device_num': cuda_device_num,
-        'train_epochs': train_epochs,
-        'epochs': epochs,
         'num_episode': num_episode,
-        'mini_batch_size': mini_batch_size,
-        'num_proc': num_proc,
         'data_path': data_path,
-
-        'logging': {
-            'model_save_interval': 50,
-            'log_interval': 1,
-        },
-
-        'model_load': {
-            'enable': load_model,
-            'path': f'{result_dir}/{result_folder_name}',
-            'epoch': model_load
-        }
+        'model_load': model_load
     }
 
     logger_params = {
@@ -143,22 +119,16 @@ def run(args):
         'tb_log_dir': tb_log_dir
     }
 
-    optimizer_params = {
-        'lr': lr,
-        'eps': 1e-5,
-        'betas': (0.9, 0.9)
-    }
-
     create_logger(logger_params['log_file'])
 
     copy_all_src(f'{result_dir}/{result_folder_name}')
 
-    trainer = TrainerModule(env_params=env_params,
+
+    trainer = TesterModule(env_params=env_params,
                             model_params=model_params,
                             logger_params=logger_params,
                             mcts_params=mcts_params,
                             run_params=train_params,
-                            optimizer_params=optimizer_params,
                             h_params=h_params)
 
-    trainer.run()
+    return trainer.run()

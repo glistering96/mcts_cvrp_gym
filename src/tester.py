@@ -3,6 +3,7 @@ from collections import deque
 from copy import copy, deepcopy
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.multiprocessing import Pool
 import torch.multiprocessing as mp
@@ -43,14 +44,16 @@ class TesterModule(RolloutBase):
         self.best_score = float('inf')
         self.best_loss = float('inf')
 
-        self._load_model(run_params['model_load'])
-
         self.debug_epoch = 0
 
         self.min_reward = float('inf')
         self.max_reward = float('-inf')
 
         self._load_model(run_params['model_load'])
+
+    def _load_model(self, path):
+        loaded = torch.load(path, map_location=self.device)
+        self.best_model.load_state_dict(loaded)
 
     def _record_video(self, epoch):
         mode = "rgb_array"
@@ -75,7 +78,9 @@ class TesterModule(RolloutBase):
         with torch.no_grad():
             while not done:
                 # env.render()
-                action, _ = self.model.predict(obs)
+                mcts = MCTS(env, self.best_model, self.mcts_params)
+                action_probs = mcts.get_action_prob(obs, temp=1)
+                action = action_probs.argmax(-1)
                 obs, reward, done, truncated, info = env.step(int(action))
 
         # close the environment and the video recorder
@@ -85,12 +90,11 @@ class TesterModule(RolloutBase):
     def run(self):
         self.time_estimator.reset(self.epochs)
         global tb, hparam_writer
-        total_epochs = self.run_params['epochs']
 
-        test_score = self._test_one_episode(self.env, self.best_model, self.mcts_params, 1)
+        test_score = test_one_episode(self.env, self.best_model, self.mcts_params, 1)
 
         # when the best score is collected
-        self._record_video(f"test")
+        # self._record_video(f"test")
 
         self.logger.info(f"Test score: {test_score}")
 
@@ -101,6 +105,7 @@ class TesterModule(RolloutBase):
         tb.flush()
         tb.close()
         self.logger.info(" *** Testing Done *** ")
+        return test_score
 
     def _test_one_epoch(self):
         # train for one epoch.
@@ -108,20 +113,24 @@ class TesterModule(RolloutBase):
         # The scenarios are trained in batched.
         return rollout_episode(self.env, self.best_model, self.mcts_params, temp=1)
 
-    def _test_one_episode(self, env, agent, mcts_params, temp):
-        obs = env.reset()
-        done = False
-        agent.eval()
 
-        with torch.no_grad():
-            while not done:
-                mcts = MCTS(env, agent, mcts_params)
-                action_probs = mcts.get_action_prob(obs, temp=temp)
-                action = action_probs.argmax(-1)
+def test_one_episode(env, agent, mcts_params, temp):
+    env.set_test_mode()
+    obs = env.reset()
+    done = False
+    agent.eval()
+    debug = 0
+    with torch.no_grad():
+        while not done:
+            mcts = MCTS(env, agent, mcts_params, training=False)
+            action_probs = mcts.get_action_prob(obs, temp=temp)
+            action = int(np.argmax(action_probs, -1))   # type must be python native
+            # action = action_probs.argmax(-1)
 
-                next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _, _ = env.step(action)
 
-                obs = next_state
+            obs = next_state
+            debug += 1
 
-                if done:
-                    return -reward
+            if done:
+                return -reward

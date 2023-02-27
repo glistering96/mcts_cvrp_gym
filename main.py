@@ -25,10 +25,10 @@ def parse_args():
 
     # model params
     parser.add_argument("--nn", type=str, default='shared_mha', help="type of policy network to use")
-    parser.add_argument("--embedding_dim", type=int, default=128, help="embedding dim of network")
-    parser.add_argument("--encoder_layer_num", type=int, default=1, help="encoder layer of network. IGNORED")
-    parser.add_argument("--qkv_dim", type=int, default=32, help="attention dim")
-    parser.add_argument("--head_num", type=int, default=8, help="attention head dim")
+    parser.add_argument("--embedding_dim", type=int, default=64, help="embedding dim of network")
+    parser.add_argument("--encoder_layer_num", type=int, default=2, help="encoder layer of network. IGNORED")
+    parser.add_argument("--qkv_dim", type=int, default=16, help="attention dim")
+    parser.add_argument("--head_num", type=int, default=4, help="attention head dim")
     parser.add_argument("--C", type=int, default=10, help="C parameter that is applied to the tanh activation on the"
                                                           " last layer output of policy network")
 
