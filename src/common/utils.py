@@ -223,15 +223,16 @@ def concat_key_val(*args):
     return result
 
 
-def add_hparams(writer, param_dict, metrics_dict, step):
+def add_hparams(writer, param_dict, metrics_dict, step=None):
     exp, ssi, sei = hparams(param_dict, metrics_dict)
 
     writer.file_writer.add_summary(exp)
     writer.file_writer.add_summary(ssi)
     writer.file_writer.add_summary(sei)
 
-    for k, v in metrics_dict.items():
-        writer.add_scalar(k, v, step)
+    if step is not None:
+        for k, v in metrics_dict.items():
+            writer.add_scalar(k, v, step)
 
 
 class NpEncoder(json.JSONEncoder):

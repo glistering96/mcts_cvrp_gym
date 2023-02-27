@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from src.common.utils import add_hparams, check_debug, explained_variance
 from src.env.cvrp_gym import CVRPEnv
 from src.models.common_modules import get_batch_tensor
-from src.rollout import RolloutBase, rollout_episode
+from src.module_base import RolloutBase, rollout_episode
 
 tb = None
 hparam_writer = None
