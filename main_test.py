@@ -1,8 +1,4 @@
-import itertools
-import json
 from argparse import ArgumentParser
-
-import torch.multiprocessing as mp
 from src.test_mcts import run
 
 
@@ -51,52 +47,6 @@ def parse_args():
     args.tb_log_dir = f'./logs'
 
     return args
-
-
-def _work(**kwargs):
-    args = parse_args()
-
-    for k, v in kwargs.items():
-        setattr(args, k, v)
-
-    score = run(args)
-    str_vals = [f"{name}_{val}" for name, val in zip(kwargs.keys(), kwargs.values())]
-    key = "-".join(str_vals)
-    return key, score
-
-
-def search_params(num_proc):
-    def dict_product(dicts):
-        return list(dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
-
-    hyper_param_dict = {
-        'num_simulations' : [15, 20, 25, 30],
-        'temp_threshold' : [5, 10, 15],
-        'cpuct' : [1, 1.1, 1.5, 5, 10],
-        'lr' : [0.00005, 0.00001]
-    }
-
-    async_result = mp.Queue()
-
-    def __callback(val):
-        async_result.put(val)
-
-    pool = mp.Pool(num_proc)
-
-    for params in dict_product(hyper_param_dict):
-        pool.apply_async(_work, kwds=params, callback=__callback)
-
-    pool.close()
-    pool.join()
-
-    result = {}
-
-    while not async_result.empty():
-        k, score = async_result.get()
-        result[k] = score
-
-    with open("param_result.json", "w") as f:
-        json.dump(result, f, indent=2)
 
 
 if __name__ == '__main__':

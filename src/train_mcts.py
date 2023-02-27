@@ -43,9 +43,10 @@ def run(args):
     num_episode = args.num_episode
     train_epochs = args.train_epochs
     model_load = args.model_load
-    load_model = True if model_load > 0 or len(model_load) is not None else False
+    load_model = True if model_load > 0 else False
     cuda_device_num = args.gpu_id
     num_proc = args.num_proc
+    lr = args.lr
 
     # logging params
     result_dir = args.result_dir

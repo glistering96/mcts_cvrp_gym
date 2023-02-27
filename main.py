@@ -36,11 +36,11 @@ def parse_args():
     parser.add_argument("--mini_batch_size", type=int, default=2048, help="mini-batch size")
     parser.add_argument("--train_epochs", type=int, default=10, help="train epochs")
     parser.add_argument("--epochs", type=int, default=5000, help="number of episodes to run")
-    parser.add_argument("--num_episode", type=int, default=100, help="number of episodes to run")
+    parser.add_argument("--num_episode", type=int, default=50, help="number of episodes to run")
     parser.add_argument("--model_load", type=int, default=-1, help="If value is greater than 0, it will load the model")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate of ADAM optimizer")
     parser.add_argument("--gpu_id", type=int, default=0, help="Id of gpu to use")
-    parser.add_argument("--num_proc", type=int, default=5, help="number of episodes to run")
+    parser.add_argument("--num_proc", type=int, default=4, help="number of episodes to run")
 
     # etc.
     parser.add_argument("-s", "--seed", type=int, default=1, help="values smaller than 1 will not set any seeds")
@@ -72,8 +72,7 @@ def search_params(num_proc):
     hyper_param_dict = {
         'num_simulations' : [15, 20, 25, 30],
         'temp_threshold' : [5, 10, 15],
-        'cpuct' : [0.5, 1, 1.1, 1.5, 2, 5, 10],
-        'reg_coef' : [0.0001, 0.00001,  0.00005],
+        'cpuct' : [1, 1.1, 1.5, 5, 10],
         'lr' : [0.00005, 0.00001]
     }
 
@@ -112,7 +111,6 @@ if __name__ == '__main__':
     # search_params(2, 'a2c')
 
     args = parse_args()
-    args.nn = 'separate_mha'
     run(args)
 
     # render_test()
